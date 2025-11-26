@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>TM Image Model — Offline Ready</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Local JS libraries -->
+  <script src="libs/tf.min.js"></script>
+  <script src="libs/teachablemachine-image.min.js"></script>
+  <style>
+    body { font-family: system-ui, Arial; margin: 0; padding: 20px; }
+    header { margin-bottom: 16px; }
+    .row { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+    #webcam-container { width: 220px; }
+    #label-container div { padding: 6px 8px; border-bottom: 1px solid #eee; }
+    button { padding: 10px 16px; }
+    .status { color: #555; margin-top: 8px; }
+    .error { color: #b00020; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Teachable Machine — Image Model (Offline)</h1>
+    <p>Put your TM Web export files in the <code>/model/</code> folder and local JS libs in <code>/libs/</code>. Run via <strong>http://localhost</strong> or HTTPS.</p>
+  </header>
+
+  <div class="row">
+    <div>
+      <button id="startBtn">Start webcam & model</button>
+      <div id="webcam-container"></div>
+      <div class="status" id="status"></div>
+    </div>
+    <div id="label-container"></div>
+  </div>
+
+  <script>
+    const MODEL_DIR = './model/';
+    let model, webcam, labelContainer, maxPredictions;
+
+    async function verifyFiles() {
+      const must = ['model.json', 'metadata.json'];
+      for (const file of must) {
+        const res = await fetch(MODEL_DIR + file, { cache: 'no-store' });
+        if (!res.ok) throw new Error(file + ' not accessible (' + res.status + ')');
+      }
+    }
+
+    async function init() {
+      const status = document.getElementById('status');
+      status.textContent = 'Initializing…';
+      try {
+        await verifyFiles();
+        const modelURL = MODEL_DIR + 'model.json';
+        const metadataURL = MODEL_DIR + 'metadata.json';
+
+        model = await tmImage.load(modelURL, metadataURL);
+        maxPredictions = model.getTotalClasses();
+
+        webcam = new tmImage.Webcam(200, 200, true);
+        await webcam.setup();
+        await webcam.play();
+        window.requestAnimationFrame(loop);
+
+        document.getElementById('webcam-container').appendChild(webcam.canvas);
+        labelContainer = document.getElementById('label-container');
+        labelContainer.innerHTML = '';
+        for (let i = 0; i < maxPredictions; i++) {
+          labelContainer.appendChild(document.createElement('div'));
+        }
+        status.textContent = 'Running';
+      } catch (err) {
+        console.error(err);
+        status.innerHTML = '<span class="error">' + err.message + '</span>';
+        alert('Failed to initialize. See console for details.');
+      }
+    }
+
+    async function loop() {
+      webcam.update();
+      await predict();
+      window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+      const prediction = await model.predict(webcam.canvas);
+      for (let i = 0; i < maxPredictions; i++) {
+        labelContainer.childNodes[i].innerHTML = `${prediction[i].className}: ${prediction[i].probability.toFixed(2)}`;
+      }
+    }
+
+    document.getElementById('startBtn').addEventListener('click', () => init());
+  </script>
+</body>
+</html>
